@@ -34,9 +34,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    // مكتبات PDF
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
-    implementation("com.github.youichi-uda:droidpdf:v1.0.1")
     implementation("io.coil-kt:coil-compose:2.6.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
