@@ -4,8 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -44,10 +42,10 @@ fun JarrahPDFApp() {
         },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(tab == 0, { tab = 0 }, { Icon(Icons.Default.Home, null) }, label = { Text("الرئيسية") })
-                NavigationBarItem(tab == 1, { tab = 1 }, { Icon(Icons.Default.Edit, null) }, label = { Text("تحرير") })
-                NavigationBarItem(tab == 2, { tab = 2 }, { Icon(Icons.Default.Merge, null) }, label = { Text("دمج") })
-                NavigationBarItem(tab == 3, { tab = 3 }, { Icon(Icons.Default.ContentCut, null) }, label = { Text("قص") })
+                NavigationBarItem(tab == 0, { tab = 0 }, { Text("الرئيسية") }, label = { Text("الرئيسية") })
+                NavigationBarItem(tab == 1, { tab = 1 }, { Text("تحرير") }, label = { Text("تحرير") })
+                NavigationBarItem(tab == 2, { tab = 2 }, { Text("دمج") }, label = { Text("دمج") })
+                NavigationBarItem(tab == 3, { tab = 3 }, { Text("قص") }, label = { Text("قص") })
             }
         }
     ) { p ->
@@ -68,9 +66,7 @@ fun JarrahPDFApp() {
         Spacer(Modifier.height(12.dp))
         Text("اختر ملف PDF للبدء.", fontSize = 16.sp)
         Spacer(Modifier.height(24.dp))
-        Button(onClick = {}, Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.FileOpen, null); Spacer(Modifier.width(8.dp)); Text("فتح ملف PDF")
-        }
+        Button(onClick = {}, Modifier.fillMaxWidth()) { Text("فتح ملف PDF") }
     }
 }
 
