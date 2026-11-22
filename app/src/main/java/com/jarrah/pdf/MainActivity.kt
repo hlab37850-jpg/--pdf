@@ -143,6 +143,76 @@ fun JarrahPDFApp() {
         savePdf.launch(name)
     }
 
+    fun doRotate(deg: Int) {
+        val f = inputFile ?: return
+        scope.launch(Dispatchers.IO) {
+            try {
+                val temp = File(context.cacheDir, "rot_${System.currentTimeMillis()}.pdf")
+                PdfEngine.rotatePage(f, temp, currentPage, deg)
+                withContext(Dispatchers.Main) { loadFile(temp, currentPage); snack("تم التدوير") }
+            } catch (e: Exception) { withContext(Dispatchers.Main) { snack("فشل: ${e.message}") } }
+        }
+    }
+
+    fun doDelete() {
+        val f = inputFile ?: return
+        if (pageCount <= 1) { snack("لا يمكن حذف الصفحة الوحيدة"); return }
+        scope.launch(Dispatchers.IO) {
+            try {
+                val temp = File(context.cacheDir, "del_${System.currentTimeMillis()}.pdf")
+                PdfEngine.deletePage(f, temp, currentPage)
+                withContext(Dispatchers.Main) {
+                    loadFile(temp, currentPage.coerceAtMost(pageCount - 2))
+                    snack("تم حذف الصفحة")
+                }
+            } catch (e: Exception) { withContext(Dispatchers.Main) { snack("فشل: ${e.message}") } }
+        }
+    }
+
+    fun doInsertBlank() {
+        val f = inputFile ?: return
+        scope.launch(Dispatchers.IO) {
+            try {
+                val temp = File(context.cacheDir, "ins_${System.currentTimeMillis()}.pdf")
+                PdfEngine.insertBlankPage(f, temp, currentPage)
+                withContext(Dispatchers.Main) { loadFile(temp, currentPage); snack("تم إدراج صفحة فارغة") }
+            } catch (e: Exception) { withContext(Dispatchers.Main) { snack("فشل: ${e.message}") } }
+        }
+    }
+
+    fun doInsertTable(rows: Int, cols: Int) {
+        val f = inputFile ?: return
+        scope.launch(Dispatchers.IO) {
+            try {
+                val temp = File(context.cacheDir, "tbl_${System.currentTimeMillis()}.pdf")
+                PdfEngine.insertTablePage(f, temp, currentPage, rows, cols)
+                withContext(Dispatchers.Main) {
+                    loadFile(temp, currentPage + 1)
+                    snack("تم إدراج جدول $rows×$cols")
+                }
+            } catch (e: Exception) { withContext(Dispatchers.Main) { snack("فشل: ${e.message}") } }
+        }
+    }
+
+    fun doCrop() {
+        val f = inputFile; val sel = selection
+        if (f == null || sel == null) { snack("ارسم مستطيلاً أولاً"); return }
+        if (sel.width() < 0.02f || sel.height() < 0.02f) { snack("المنطقة صغيرة جداً"); return }
+        scope.launch(Dispatchers.IO) {
+            try {
+                val temp = File(context.cacheDir, "cropped_${System.currentTimeMillis()}.pdf")
+                PdfEngine.cropPage(f, temp, currentPage, sel)
+                withContext(Dispatchers.Main) {
+                    loadFile(temp, currentPage)
+                    saveOutput(temp, "cropped.pdf")
+                    snack("تم القص - اختر مكان الحفظ")
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { snack("فشل القص: ${e.message}") }
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -169,84 +239,32 @@ fun JarrahPDFApp() {
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                0 -> HomeScreen(inputFile, pageCount,
+                0 -> HomeScreen(
+                    inputFile = inputFile,
+                    pageCount = pageCount,
                     onPick = { pickPdf.launch(arrayOf("application/pdf")) },
-                    onOpenViewer = { tab = 1 })
-                1 -> ViewerScreen(bitmap, currentPage, pageCount,
-                    onPage = { inputFile?.let { loadFile(it, it@ run { it } ) } }.let { _ ->
-                        { newPage -> inputFile?.let { loadFile(it, newPage) } }
-                    })
-                2 -> CropScreen(bitmap, selection,
+                    onOpenViewer = { tab = 1 }
+                )
+                1 -> ViewerScreen(
+                    bitmap = bitmap,
+                    currentPage = currentPage,
+                    pageCount = pageCount,
+                    onPage = { newPage -> inputFile?.let { loadFile(it, newPage) } }
+                )
+                2 -> CropScreen(
+                    bitmap = bitmap,
+                    selection = selection,
                     onSelection = { selection = it },
-                    onCrop = {
-                        val f = inputFile; val sel = selection
-                        if (f == null || sel == null) snack("ارسم مستطيلاً أولاً")
-                        else if (sel.width() < 0.02f || sel.height() < 0.02f) snack("المنطقة صغيرة جداً")
-                        else scope.launch(Dispatchers.IO) {
-                            try {
-                                val temp = File(context.cacheDir, "cropped_${System.currentTimeMillis()}.pdf")
-                                PdfEngine.cropPage(f, temp, currentPage, sel)
-                                withContext(Dispatchers.Main) {
-                                    loadFile(temp, currentPage)
-                                    saveOutput(temp, "cropped.pdf")
-                                    snack("تم القص - اختر مكان الحفظ")
-                                }
-                            } catch (e: Exception) {
-                                withContext(Dispatchers.Main) { snack("فشل القص: ${e.message}") }
-                            }
-                        }
-                    })
+                    onCrop = { doCrop() }
+                )
                 3 -> ToolsScreen(
                     hasFile = inputFile != null,
                     currentPage = currentPage,
                     pageCount = pageCount,
-                    onRotate = { deg ->
-                        val f = inputFile ?: return@ToolsScreen
-                        scope.launch(Dispatchers.IO) {
-                            try {
-                                val temp = File(context.cacheDir, "rot_${System.currentTimeMillis()}.pdf")
-                                PdfEngine.rotatePage(f, temp, currentPage, deg)
-                                withContext(Dispatchers.Main) { loadFile(temp, currentPage); snack("تم التدوير") }
-                            } catch (e: Exception) { withContext(Dispatchers.Main) { snack("فشل: ${e.message}") } }
-                        }
-                    },
-                    onDelete = {
-                        val f = inputFile ?: return@ToolsScreen
-                        if (pageCount <= 1) { snack("لا يمكن حذف الصفحة الوحيدة"); return@ToolsScreen }
-                        scope.launch(Dispatchers.IO) {
-                            try {
-                                val temp = File(context.cacheDir, "del_${System.currentTimeMillis()}.pdf")
-                                PdfEngine.deletePage(f, temp, currentPage)
-                                withContext(Dispatchers.Main) {
-                                    loadFile(temp, currentPage.coerceAtMost(pageCount - 2))
-                                    snack("تم حذف الصفحة")
-                                }
-                            } catch (e: Exception) { withContext(Dispatchers.Main) { snack("فشل: ${e.message}") } }
-                        }
-                    },
-                    onInsertBlank = {
-                        val f = inputFile ?: return@ToolsScreen
-                        scope.launch(Dispatchers.IO) {
-                            try {
-                                val temp = File(context.cacheDir, "ins_${System.currentTimeMillis()}.pdf")
-                                PdfEngine.insertBlankPage(f, temp, currentPage)
-                                withContext(Dispatchers.Main) { loadFile(temp, currentPage); snack("تم إدراج صفحة فارغة") }
-                            } catch (e: Exception) { withContext(Dispatchers.Main) { snack("فشل: ${e.message}") } }
-                        }
-                    },
-                    onInsertTable = { rows, cols ->
-                        val f = inputFile ?: return@ToolsScreen
-                        scope.launch(Dispatchers.IO) {
-                            try {
-                                val temp = File(context.cacheDir, "tbl_${System.currentTimeMillis()}.pdf")
-                                PdfEngine.insertTablePage(f, temp, currentPage, rows, cols)
-                                withContext(Dispatchers.Main) {
-                                    loadFile(temp, currentPage + 1)
-                                    snack("تم إدراج جدول $rows×$cols")
-                                }
-                            } catch (e: Exception) { withContext(Dispatchers.Main) { snack("فشل: ${e.message}") } }
-                        }
-                    },
+                    onRotate = { deg -> doRotate(deg) },
+                    onDelete = { doDelete() },
+                    onInsertBlank = { doInsertBlank() },
+                    onInsertTable = { r, c -> doInsertTable(r, c) },
                     onMerge = { mergePick.launch(arrayOf("application/pdf")) },
                     onSave = { inputFile?.let { saveOutput(it, "output.pdf") } }
                 )
@@ -315,7 +333,12 @@ fun CropScreen(bitmap: Bitmap?, selection: RectF?, onSelection: (RectF?) -> Unit
     var dragStart by remember { mutableStateOf<Offset?>(null) }
 
     Column(Modifier.fillMaxSize().padding(12.dp)) {
-        Text("ارسم مستطيلاً حول المنطقة المراد قصها", fontSize = 14.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Text(
+            "ارسم مستطيلاً حول المنطقة المراد قصها",
+            fontSize = 14.sp,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
         Spacer(Modifier.height(8.dp))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             Box(Modifier.fillMaxWidth()) {
@@ -417,11 +440,19 @@ fun InsertTableDialog(onDismiss: () -> Unit, onConfirm: (Int, Int) -> Unit) {
         title = { Text("إدراج جدول") },
         text = {
             Column {
-                OutlinedTextField(value = rows, onValueChange = { rows = it.filter { c -> c.isDigit() } },
-                    label = { Text("عدد الصفوف") }, singleLine = true)
+                OutlinedTextField(
+                    value = rows,
+                    onValueChange = { rows = it.filter { c -> c.isDigit() } },
+                    label = { Text("عدد الصفوف") },
+                    singleLine = true
+                )
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = cols, onValueChange = { cols = it.filter { c -> c.isDigit() } },
-                    label = { Text("عدد الأعمدة") }, singleLine = true)
+                OutlinedTextField(
+                    value = cols,
+                    onValueChange = { cols = it.filter { c -> c.isDigit() } },
+                    label = { Text("عدد الأعمدة") },
+                    singleLine = true
+                )
             }
         },
         confirmButton = {
