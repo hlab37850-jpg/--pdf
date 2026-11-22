@@ -1,64 +1,117 @@
 package com.jarrah.pdf
 
+import android.graphics.Bitmap
 import android.graphics.RectF
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
+import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
-import com.tom_roush.pdfbox.text.PDFTextStripperByArea
 import java.io.File
+import java.io.FileOutputStream
 
 object PdfEngine {
 
+    fun pageCount(file: File): Int = PDDocument.load(file).use { it.numberOfPages }
+
+    fun renderPage(file: File, pageIndex: Int, targetWidthPx: Int): Bitmap {
+        val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        return PdfRenderer(pfd).use { renderer ->
+            renderer.openPage(pageIndex).use { page ->
+                val aspect = page.height.toFloat() / page.width.toFloat()
+                val h = (targetWidthPx * aspect).toInt().coerceAtLeast(1)
+                val bmp = Bitmap.createBitmap(targetWidthPx, h, Bitmap.Config.ARGB_8888)
+                bmp.eraseColor(android.graphics.Color.WHITE)
+                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                bmp
+            }
+        }
+    }
+
     /**
-     * قص منطقة من صفحة (CropBox) — مناسب لقص عمود أو جدول من الصفحة.
-     * @param rect المستطيل المراد إظهاره بالوحدات (points، 72 لكل بوصة).
-     *             الإحداثيات تبدأ من الركن السفلي الأيسر للصفحة كما في PDF.
+     * rectNorm إحداثيات نسبية (0..1) مع نقطة الأصل أعلى-يسار الصفحة المعروضة.
      */
-    fun cropPage(input: File, output: File, pageIndex: Int, rect: RectF) {
+    fun cropPage(input: File, output: File, pageIndex: Int, rectNorm: RectF) {
         PDDocument.load(input).use { doc ->
             val page = doc.getPage(pageIndex)
-            page.cropBox = PDRectangle(rect.left, rect.top, rect.width(), rect.height())
+            val box = page.cropBox
+            val left = box.lowerLeftX + rectNorm.left * box.width
+            val right = box.lowerLeftX + rectNorm.right * box.width
+            val topY = box.upperRightY - rectNorm.top * box.height
+            val bottomY = box.upperRightY - rectNorm.bottom * box.height
+            page.cropBox = PDRectangle(left, bottomY, right - left, topY - bottomY)
             doc.save(output)
         }
     }
 
-    /** استخراج نص من منطقة محددة (لتحليل جدول قبل القص). */
-    fun extractTextFromRegion(input: File, pageIndex: Int, rect: RectF): String {
+    fun rotatePage(input: File, output: File, pageIndex: Int, deltaDegrees: Int) {
         PDDocument.load(input).use { doc ->
-            val stripper = PDFTextStripperByArea()
-            stripper.addRegion("region", rect)
-            stripper.extractRegions(doc.getPage(pageIndex))
-            return stripper.getTextForRegion("region")
+            val page = doc.getPage(pageIndex)
+            page.rotation = ((page.rotation + deltaDegrees) % 360 + 360) % 360
+            doc.save(output)
         }
     }
 
-    /**
-     * إدراج صفحة فارغة بعد صفحة معينة.
-     * @param afterPageIndex رقم الصفحة (0-based) التي ستُدرج الصفحة بعدها.
-     *                       إذا كان -1 أو أكبر من آخر صفحة، تُضاف في النهاية.
-     */
-    fun insertBlankPage(input: File, output: File, afterPageIndex: Int) {
+    fun deletePage(input: File, output: File, pageIndex: Int) {
+        PDDocument.load(input).use { doc ->
+            if (doc.numberOfPages <= 1) throw IllegalStateException("لا يمكن حذف الصفحة الوحيدة")
+            doc.removePage(pageIndex)
+            doc.save(output)
+        }
+    }
+
+    fun insertBlankPage(input: File, output: File, afterIndex: Int) {
         PDDocument.load(input).use { doc ->
             val newPage = PDPage(PDRectangle.A4)
-            val total = doc.numberOfPages
-            when {
-                afterPageIndex < 0 || afterPageIndex >= total - 1 -> {
-                    doc.addPage(newPage)
-                }
-                else -> {
-                    val refPage = doc.getPage(afterPageIndex)
-                    doc.pages.insertAfter(newPage, refPage)
-                }
+            if (afterIndex < 0 || afterIndex >= doc.numberOfPages - 1) {
+                doc.addPage(newPage)
+            } else {
+                doc.pages.insertAfter(newPage, doc.getPage(afterIndex))
             }
             doc.save(output)
         }
     }
 
-    /** دمج عدة ملفات PDF في ملف واحد (يعتمد على PDFBox فقط). */
+    fun insertTablePage(input: File, output: File, afterIndex: Int, rows: Int, cols: Int) {
+        PDDocument.load(input).use { doc ->
+            val page = PDPage(PDRectangle.A4)
+            if (afterIndex < 0 || afterIndex >= doc.numberOfPages - 1) {
+                doc.addPage(page)
+            } else {
+                doc.pages.insertAfter(page, doc.getPage(afterIndex))
+            }
+            val media = page.mediaBox
+            PDPageContentStream(doc, page).use { cs ->
+                cs.setStrokingColor(0, 0, 0)
+                cs.setLineWidth(1f)
+                val margin = 40f
+                val tableW = media.width - 2 * margin
+                val rowH = 24f
+                val colW = tableW / cols
+                val startY = media.height - margin
+                for (r in 0..rows) {
+                    val y = startY - r * rowH
+                    cs.moveTo(margin, y)
+                    cs.lineTo(margin + tableW, y)
+                }
+                cs.stroke()
+                for (c in 0..cols) {
+                    val x = margin + c * colW
+                    cs.moveTo(x, startY)
+                    cs.lineTo(x, startY - rows * rowH)
+                }
+                cs.stroke()
+            }
+            doc.save(output)
+        }
+    }
+
     fun mergePdfs(inputs: List<File>, output: File) {
-        PDDocument().use { out ->
-            val merger = com.tom_roush.pdfbox.multipdf.PDFMergerUtility()
-            merger.destinationFileName = output.absolutePath
+        FileOutputStream(output).use { out ->
+            val merger = PDFMergerUtility()
+            merger.destinationStream = out
             inputs.forEach { merger.addSource(it) }
             merger.mergeDocuments(null)
         }
