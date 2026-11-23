@@ -159,7 +159,7 @@ fun App() {
         }
     }
 
-    fun performOp(label: String, op: (File, File) -> Unit, switchToViewer: Boolean = true) {
+    fun performOp(label: String, switchToViewer: Boolean = true, op: (File, File) -> Unit) {
         val f = inputFile ?: return
         val page = currentPage
         scope.launch {
