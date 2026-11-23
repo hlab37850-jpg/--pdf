@@ -25,7 +25,7 @@ object ArabicHelper {
         } catch (_: Exception) { text }
         return try {
             val bidi = Bidi(shaped, Bidi.DIRECTION_DEFAULT_RIGHT_TO_LEFT)
-            bidi.setReorderingMode(Bidi.REORDER_DEFAULT)
+            bidi.setReorderingMode(0)
             bidi.writeReordered(0)
         } catch (_: Exception) { shaped }
     }
